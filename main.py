@@ -7,6 +7,7 @@ from urllib.parse import urlparse, unquote
 from pathlib import Path
 
 # Some logic/code was taken from this project: https://github.com/Jules-WinnfieldX/CyberDropDownloader/
+# Specifically this spider: https://github.com/Jules-WinnfieldX/CyberDropDownloader/blob/master/cyberdrop_dl/crawlers/RedGifs_Spider.py
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
