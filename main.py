@@ -14,7 +14,7 @@ CONFIG = {
 
 def configure():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--username", "-u", help="Username to scrape")
+    parser.add_argument("--username", "-u", help="Username or profile link to scrape")
     parser.add_argument(
         "--concurrency",
         type=int,
@@ -22,7 +22,16 @@ def configure():
     )
     args = parser.parse_args()
 
-    user_id = args.username or input("Enter the username to scrape: ")
+    user_input = args.username or input(
+        "Enter the username or profile link to scrape: "
+    )
+
+    parsed_url = urlparse(user_input)
+    if parsed_url.netloc == "www.redgifs.com" and parsed_url.path.startswith("/users/"):
+        user_id = parsed_url.path.split("/")[-1]
+    else:
+        user_id = user_input
+
     if args.concurrency is not None:
         CONFIG["max_concurrent_downloads"] = args.concurrency
 
