@@ -7,6 +7,27 @@ from pathlib import Path
 
 # Some logic/code was taken from this project: https://github.com/Jules-WinnfieldX/CyberDropDownloader/
 
+CONFIG = {
+    "max_concurrent_downloads": 5,
+}
+
+
+def configure():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--username", "-u", help="Username to scrape")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        help="Maximum number of concurrent downloads",
+    )
+    args = parser.parse_args()
+
+    user_id = args.username or input("Enter the username to scrape: ")
+    if args.concurrency is not None:
+        CONFIG["max_concurrent_downloads"] = args.concurrency
+
+    return user_id
+
 
 async def download_video(
     session, url, folder_path, semaphore, downloaded_count, skipped_count
@@ -40,24 +61,15 @@ async def main():
     os.system("clear" if os.name == "posix" else "cls")
 
     redgifs_api = "https://api.redgifs.com/"
+    user_id = configure()
+    print(f"Scraping https://www.redgifs.com/users/{user_id}\n")
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--username", "-u", help="Username to scrape")
-    args = parser.parse_args()
-
-    user_id = args.username or input("Enter the username to scrape: ")
-    print()
-
-    start_page = 1
     download_folder = Path(f"Redgif Files - {user_id}")
-    max_concurrent_downloads = 5
-    total_downloads = 0
-    downloaded_count = 0
-    skipped_count = 0
 
     async with httpx.AsyncClient() as session:
         token_response = await session.get(redgifs_api + "v2/auth/temporary")
         token = token_response.json()["token"]
+        start_page = 1
 
         headers = {"Authorization": f"Bearer {token}"}
 
@@ -69,7 +81,7 @@ async def main():
 
         hd_sd_values = []
 
-        for page in range(1, total_pages + 1):
+        for page in range(start_page, total_pages + 1):
             search_url = redgifs_api + f"v2/users/{user_id}/search?page={page}"
             json_response = await session.get(search_url, headers=headers)
 
@@ -89,7 +101,9 @@ async def main():
                 elif sd_value:
                     hd_sd_values.append(sd_value)
 
-        semaphore = asyncio.Semaphore(max_concurrent_downloads)
+        semaphore = asyncio.Semaphore(CONFIG["max_concurrent_downloads"])
+        downloaded_count = 0
+        skipped_count = 0
         tasks = [
             download_video(
                 session,
