@@ -33,6 +33,7 @@ If you find any issues or have suggestions for improvements, feel free to open a
 ## Acknowledgments
 
 This script is inspired by the [CyberDropDownloader](https://github.com/Jules-WinnfieldX/CyberDropDownloader/) project.
+Logic was directly copied from their [RedGifs Spider](https://github.com/Jules-WinnfieldX/CyberDropDownloader/blob/master/cyberdrop_dl/crawlers/RedGifs_Spider.py)
 
 ## Disclaimer
 
