@@ -26,7 +26,7 @@ The Redgif Downloader is a Python script that allows you to download videos from
 - You can use the optional `--concurrency` argument to specify the maximum number of concurrent downloads. If not provided, the default value of 5 will be used.
 - Use the `--skip-history` flag to download files even if they are in the history.
 - Use the `--batch` argument to provide a path to a file containing a list of usernames or a comma-separated list of usernames.
-- You can also provide a custom `--root-path` to specify where downloaded files should be saved. If not provided, the default value from the script's configuration will be used.
+- You can also provide a custom `--root-path` to specify where downloaded files should be saved. If not provided, the default value from the script's configuration will be used (the same directory this script is running from).
 - Similarly, you can provide a custom `--database-path` to specify the path for the database. If not provided, the default value from the script's configuration will be used.
 
 4. The script will start fetching and downloading videos from the specified user's profile. The videos will be saved in a folder named `Redgif Files - USERNAME`, where `USERNAME` is the provided Redgifs username.
