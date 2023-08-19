@@ -19,15 +19,12 @@ The Redgif Downloader is a Python script that allows you to download videos from
 
 1. Clone the repository or download the script directly.
 2. Open a terminal or command prompt and navigate to the directory containing the script.
-
 3. Run the script using the following command:
-`python redgif_downloader.py [--username USERNAME]`
+`python redgif_downloader.py [--username USERNAME] [--concurrency CONCURRENCY]`
 
-Replace `USERNAME` with the Redgifs username you want to scrape. If you don't provide the `--username` argument, the script will prompt you to enter the username.
-
-4. The script will start fetching and downloading videos from the specified user's profile. The videos will be saved in a folder named `Redgif Files - USERNAME`, where `USERNAME` is the provided Redgifs username.
-
-5. Once the script finishes, it will display the total number of downloads, downloaded videos, and skipped videos.
+Replace `USERNAME` with the Redgifs username you want to scrape. If you don't provide the `--username` argument, the script will prompt you to enter the username. You can also use the optional `--concurrency` argument to specify the maximum number of concurrent downloads. If not provided, the default value of 5 will be used.
+5. The script will start fetching and downloading videos from the specified user's profile. The videos will be saved in a folder named `Redgif Files - USERNAME`, where `USERNAME` is the provided Redgifs username.
+6. Once the script finishes, it will display the total number of downloads, downloaded videos, and skipped videos.
 
 ## Contributing
 
@@ -44,5 +41,3 @@ This script is meant for educational and personal use only. Please respect Redgi
 ## License
 
 This project is licensed under the [GPL-3.0 License](LICENSE).
-
----
