@@ -13,61 +13,65 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 CONFIG = {
     "max_concurrent_downloads": 5,
-    "root_path": "",  # if this is empty, it will store downloads in a subfolder of the path this script is in
+    "root_path": "",
+    "database_path": "history.sqlite",
 }
 
 
-def configure():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--username", "-u", help="Username or profile link to scrape")
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        help="Maximum number of concurrent downloads",
-    )
-    args = parser.parse_args()
+class DatabaseManager:
+    def __init__(self, database_path):
+        self.database_path = Path(database_path)
 
-    user_input = args.username or input(
-        "Enter the username or profile link to scrape: "
-    )
+    def __enter__(self):
+        self.conn = sqlite3.connect(self.database_path)
+        self.cursor = self.conn.cursor()
+        return self.cursor
 
-    parsed_url = urlparse(user_input)
-    if parsed_url.netloc == "www.redgifs.com" and parsed_url.path.startswith("/users/"):
-        user_id = parsed_url.path.split("/")[-1]
-    else:
-        user_id = user_input
-
-    if args.concurrency is not None:
-        CONFIG["max_concurrent_downloads"] = args.concurrency
-
-    return user_id
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.conn.commit()
+        self.conn.close()
 
 
 def initialize_database():
-    conn = sqlite3.connect("history.sqlite")
-    cursor = conn.cursor()
-    cursor.execute(
+    with DatabaseManager(CONFIG["database_path"]) as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS downloads (
+                username TEXT,
+                video_name TEXT,
+                PRIMARY KEY (username, video_name)
+            )
         """
-        CREATE TABLE IF NOT EXISTS downloads (
-            username TEXT,
-            video_name TEXT,
-            PRIMARY KEY (username, video_name)
         )
-    """
-    )
-    conn.commit()
-    conn.close()
 
 
-async def download_video(
-    session, url, folder_path, semaphore, downloaded_count, skipped_count, username
-):
+def check_download_in_db(username, video_name):
+    with DatabaseManager(CONFIG["database_path"]) as cursor:
+        cursor.execute(
+            "SELECT * FROM downloads WHERE username = ? AND video_name = ?",
+            (username, video_name),
+        )
+        result = cursor.fetchone()
+    return result is not None
+
+
+def insert_download_into_db(username, video_name):
+    with DatabaseManager(CONFIG["database_path"]) as cursor:
+        cursor.execute(
+            "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
+            (username, video_name),
+        )
+
+
+downloads_to_insert = []
+
+
+async def download_video(session, url, folder_path, semaphore, username):
     async with semaphore:
         async with session.stream("GET", url) as response:
             if response.status_code == 200:
                 video_data = await response.aread()
-                parsed_url = urlparse(url)
-                video_name = unquote(parsed_url.path.split("/")[-1].split("?")[0])
+                video_name = unquote(urlparse(url).path.split("/")[-1].split("?")[0])
 
                 if CONFIG.get("root_path"):
                     root_path = Path(CONFIG["root_path"])
@@ -78,53 +82,47 @@ async def download_video(
                 if not video_path.parent.exists():
                     video_path.parent.mkdir(parents=True)
 
-                if not video_path.exists() and not check_download_in_db(
-                    username, video_name
-                ):
-                    with video_path.open("wb") as video_file:
-                        video_file.write(video_data)
-                    print(f"Downloaded {video_name}")
-                    downloaded_count += 1
-                    insert_download_into_db(username, video_name)
+                is_skipped = False
+
+                if not video_path.exists():
+                    if (
+                        not check_download_in_db(username, video_name)
+                        or args.skip_history
+                    ):
+                        with video_path.open("wb") as video_file:
+                            video_file.write(video_data)
+                        print(f"Downloaded {video_name}")
+
+                        downloads_to_insert.append((username, video_name))
+                    else:
+                        print(f"Skipping {video_name} (already downloaded)")
+                        is_skipped = True
+                        # this condition probably never happens
                 else:
-                    print(f"Skipping {video_name}")
-                    skipped_count += 1
-                    insert_download_into_db(username, video_name)
+                    if not check_download_in_db(username, video_name):
+                        print(f"Skipping {video_name} (already downloaded)")
+                        is_skipped = True
+                        # this condition probably never happens
+                    else:
+                        print(f"Skipping {video_name} (already downloaded)")
+                        is_skipped = True
+
+                if is_skipped:
+                    downloads_to_insert.append((username, video_name))
+                    return 0, 1
+                else:
+                    return 1, 0
             else:
                 print(f"Failed to download {url}")
-
-    return downloaded_count, skipped_count
-
-
-def check_download_in_db(username, video_name):
-    conn = sqlite3.connect("history.sqlite")
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT * FROM downloads WHERE username = ? AND video_name = ?",
-        (username, video_name),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    return result is not None
+                return 0, 1
 
 
-def insert_download_into_db(username, video_name):
-    conn = sqlite3.connect("history.sqlite")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
-        (username, video_name),
-    )
-    conn.commit()
-    conn.close()
-
-
-async def main():
+async def main(username):
     os.system("clear" if os.name == "posix" else "cls")
     initialize_database()
 
     redgifs_api = "https://api.redgifs.com/"
-    user_id = configure()
+    user_id = username
     print(f"Scraping https://www.redgifs.com/users/{user_id}\n")
 
     download_folder = Path(f"Redgif Files - {user_id}")
@@ -144,6 +142,8 @@ async def main():
 
         hd_sd_values = []
 
+        skipped_count = 0
+
         for page in range(start_page, total_pages + 1):
             search_url = redgifs_api + f"v2/users/{user_id}/search?page={page}"
             json_response = await session.get(search_url, headers=headers)
@@ -159,37 +159,87 @@ async def main():
                 links = gif.get("urls", {})
                 hd_value = links.get("hd")
                 sd_value = links.get("sd")
-                if hd_value:
-                    hd_sd_values.append(hd_value)
-                elif sd_value:
-                    hd_sd_values.append(sd_value)
+                if hd_value or sd_value:
+                    video_name = unquote(
+                        urlparse(hd_value or sd_value).path.split("/")[-1].split("?")[0]
+                    )
+                    if (
+                        not check_download_in_db(user_id, video_name)
+                        or args.skip_history
+                    ):
+                        hd_sd_values.append(hd_value or sd_value)
+                    else:
+                        print(f"Skipping {video_name} (already in database)")
+                        skipped_count += 1
 
         semaphore = asyncio.Semaphore(CONFIG["max_concurrent_downloads"])
         downloaded_count = 0
-        skipped_count = 0
-        tasks = [
-            download_video(
-                session,
-                value,
-                download_folder,
-                semaphore,
-                downloaded_count,
-                skipped_count,
-                user_id,
+
+        tasks = []
+        for value in hd_sd_values:
+            tasks.append(
+                download_video(session, value, download_folder, semaphore, user_id)
             )
-            for value in hd_sd_values
-        ]
+
         results = await asyncio.gather(*tasks)
 
-        for result in results:
-            downloaded_count += result[0]
-            skipped_count += result[1]
+    for downloaded, skipped in results:
+        downloaded_count += downloaded
+        skipped_count += skipped
 
-        total_downloads = downloaded_count + skipped_count
+    total_downloads = downloaded_count + skipped_count
+
+    with DatabaseManager(CONFIG["database_path"]) as cursor:
+        cursor.executemany(
+            "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
+            downloads_to_insert,
+        )
 
     print(f"\nTotal downloads: {total_downloads}")
     print(f"Downloaded: {downloaded_count}")
     print(f"Skipped: {skipped_count}\n")
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--username", "-u", help="Username or profile link to scrape")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        help="Maximum number of concurrent downloads",
+    )
+    parser.add_argument(
+        "--skip-history",
+        action="store_true",
+        help="Download files even if they are in the history",
+    )
+    parser.add_argument(
+        "--batch",
+        help="Path to a file containing a list of usernames, or a comma-separated list of usernames",
+    )
+    args = parser.parse_args()
+
+    if args.concurrency is not None:
+        CONFIG["max_concurrent_downloads"] = args.concurrency
+
+    if args.batch:
+        usernames = []
+        if os.path.isfile(args.batch):
+            with open(args.batch, "r") as batch_file:
+                usernames = batch_file.read().splitlines()
+        else:
+            usernames = args.batch.split(",")
+
+        for user_id in usernames:
+            os.system("clear" if os.name == "posix" else "cls")
+            initialize_database()
+            asyncio.run(main(user_id))
+    else:
+        user_id = args.username or input(
+            "Enter the username or profile link to scrape: "
+        )
+
+        os.system("clear" if os.name == "posix" else "cls")
+        initialize_database()
+
+        asyncio.run(main(user_id))
