@@ -88,6 +88,7 @@ async def download_video(
                 else:
                     print(f"Skipping {video_name}")
                     skipped_count += 1
+                    insert_download_into_db(username, video_name)
             else:
                 print(f"Failed to download {url}")
 
