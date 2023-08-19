@@ -55,14 +55,6 @@ def check_download_in_db(username, video_name):
     return result is not None
 
 
-def insert_download_into_db(username, video_name):
-    with DatabaseManager(CONFIG["database_path"]) as cursor:
-        cursor.execute(
-            "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
-            (username, video_name),
-        )
-
-
 downloads_to_insert = []
 
 
@@ -217,10 +209,24 @@ if __name__ == "__main__":
         "--batch",
         help="Path to a file containing a list of usernames, or a comma-separated list of usernames",
     )
+    parser.add_argument(
+        "--root-path",
+        help="Root path for downloaded files",
+    )
+    parser.add_argument(
+        "--database-path",
+        help="Path for the database",
+    )
     args = parser.parse_args()
 
     if args.concurrency is not None:
         CONFIG["max_concurrent_downloads"] = args.concurrency
+
+    if args.root_path is not None:
+        CONFIG["root_path"] = args.root_path
+
+    if args.database_path is not None:
+        CONFIG["database_path"] = args.database_path
 
     if args.batch:
         usernames = []
