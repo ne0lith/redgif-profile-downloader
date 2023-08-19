@@ -1,14 +1,18 @@
 import os
 import httpx
 import asyncio
+import sqlite3
 import argparse
 from urllib.parse import urlparse, unquote
 from pathlib import Path
 
 # Some logic/code was taken from this project: https://github.com/Jules-WinnfieldX/CyberDropDownloader/
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 CONFIG = {
     "max_concurrent_downloads": 5,
+    "root_path": "",  # if this is empty, it will store downloads in a subfolder of the path this script is in
 }
 
 
@@ -38,8 +42,24 @@ def configure():
     return user_id
 
 
+def initialize_database():
+    conn = sqlite3.connect("history.sqlite")
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS downloads (
+            username TEXT,
+            video_name TEXT,
+            PRIMARY KEY (username, video_name)
+        )
+    """
+    )
+    conn.commit()
+    conn.close()
+
+
 async def download_video(
-    session, url, folder_path, semaphore, downloaded_count, skipped_count
+    session, url, folder_path, semaphore, downloaded_count, skipped_count, username
 ):
     async with semaphore:
         async with session.stream("GET", url) as response:
@@ -47,16 +67,24 @@ async def download_video(
                 video_data = await response.aread()
                 parsed_url = urlparse(url)
                 video_name = unquote(parsed_url.path.split("/")[-1].split("?")[0])
-                video_path = Path(folder_path) / video_name
+
+                if CONFIG.get("root_path"):
+                    root_path = Path(CONFIG["root_path"])
+                    video_path = root_path / folder_path / video_name
+                else:
+                    video_path = Path(folder_path) / video_name
 
                 if not video_path.parent.exists():
                     video_path.parent.mkdir(parents=True)
 
-                if not video_path.exists():
+                if not video_path.exists() and not check_download_in_db(
+                    username, video_name
+                ):
                     with video_path.open("wb") as video_file:
                         video_file.write(video_data)
                     print(f"Downloaded {video_name}")
                     downloaded_count += 1
+                    insert_download_into_db(username, video_name)
                 else:
                     print(f"Skipping {video_name}")
                     skipped_count += 1
@@ -66,8 +94,32 @@ async def download_video(
     return downloaded_count, skipped_count
 
 
+def check_download_in_db(username, video_name):
+    conn = sqlite3.connect("history.sqlite")
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM downloads WHERE username = ? AND video_name = ?",
+        (username, video_name),
+    )
+    result = cursor.fetchone()
+    conn.close()
+    return result is not None
+
+
+def insert_download_into_db(username, video_name):
+    conn = sqlite3.connect("history.sqlite")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
+        (username, video_name),
+    )
+    conn.commit()
+    conn.close()
+
+
 async def main():
     os.system("clear" if os.name == "posix" else "cls")
+    initialize_database()
 
     redgifs_api = "https://api.redgifs.com/"
     user_id = configure()
@@ -121,6 +173,7 @@ async def main():
                 semaphore,
                 downloaded_count,
                 skipped_count,
+                user_id,
             )
             for value in hd_sd_values
         ]
