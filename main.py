@@ -13,9 +13,11 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 CONFIG = {
     "max_concurrent_downloads": 5,
-    "root_path": "",
-    "database_path": "history.sqlite",
+    "root_path": "A:/Venus/tools/CyberDropDownloader/Downloads",
+    "database_path": "A:/Venus/tools/CyberDropDownloader/redgif_history.sqlite",
 }
+
+history_to_insert = []
 
 
 class DatabaseManager:
@@ -55,9 +57,6 @@ def check_download_in_db(username, video_name):
     return result is not None
 
 
-downloads_to_insert = []
-
-
 async def download_video(session, url, folder_path, semaphore, username):
     async with semaphore:
         async with session.stream("GET", url) as response:
@@ -85,7 +84,7 @@ async def download_video(session, url, folder_path, semaphore, username):
                             video_file.write(video_data)
                         print(f"Downloaded {video_name}")
 
-                        downloads_to_insert.append((username, video_name))
+                        history_to_insert.append((username, video_name))
                     else:
                         print(f"Skipping {video_name} (already downloaded)")
                         is_skipped = True
@@ -100,7 +99,7 @@ async def download_video(session, url, folder_path, semaphore, username):
                         is_skipped = True
 
                 if is_skipped:
-                    downloads_to_insert.append((username, video_name))
+                    history_to_insert.append((username, video_name))
                     return 0, 1
                 else:
                     return 1, 0
@@ -110,14 +109,10 @@ async def download_video(session, url, folder_path, semaphore, username):
 
 
 async def main(username):
-    os.system("clear" if os.name == "posix" else "cls")
-    initialize_database()
-
     redgifs_api = "https://api.redgifs.com/"
-    user_id = username
-    print(f"Scraping https://www.redgifs.com/users/{user_id}\n")
+    print(f"Scraping https://www.redgifs.com/users/{username}\n")
 
-    download_folder = Path(f"Redgif Files - {user_id}")
+    download_folder = Path(f"Redgif Files - {username}")
 
     async with httpx.AsyncClient() as session:
         token_response = await session.get(redgifs_api + "v2/auth/temporary")
@@ -126,7 +121,7 @@ async def main(username):
 
         headers = {"Authorization": f"Bearer {token}"}
 
-        search_url = redgifs_api + f"v2/users/{user_id}/search?page={start_page}"
+        search_url = redgifs_api + f"v2/users/{username}/search?page={start_page}"
         json_response = await session.get(search_url, headers=headers)
         json_obj = json_response.json()
 
@@ -137,7 +132,7 @@ async def main(username):
         skipped_count = 0
 
         for page in range(start_page, total_pages + 1):
-            search_url = redgifs_api + f"v2/users/{user_id}/search?page={page}"
+            search_url = redgifs_api + f"v2/users/{username}/search?page={page}"
             json_response = await session.get(search_url, headers=headers)
 
             if json_response.status_code == 404:
@@ -156,7 +151,7 @@ async def main(username):
                         urlparse(hd_value or sd_value).path.split("/")[-1].split("?")[0]
                     )
                     if (
-                        not check_download_in_db(user_id, video_name)
+                        not check_download_in_db(username, video_name)
                         or args.skip_history
                     ):
                         hd_sd_values.append(hd_value or sd_value)
@@ -170,7 +165,7 @@ async def main(username):
         tasks = []
         for value in hd_sd_values:
             tasks.append(
-                download_video(session, value, download_folder, semaphore, user_id)
+                download_video(session, value, download_folder, semaphore, username)
             )
 
         results = await asyncio.gather(*tasks)
@@ -184,7 +179,7 @@ async def main(username):
     with DatabaseManager(CONFIG["database_path"]) as cursor:
         cursor.executemany(
             "INSERT OR IGNORE INTO downloads (username, video_name) VALUES (?, ?)",
-            downloads_to_insert,
+            history_to_insert,
         )
 
     print(f"\nTotal downloads: {total_downloads}")
@@ -193,6 +188,9 @@ async def main(username):
 
 
 if __name__ == "__main__":
+    os.system("clear" if os.name == "posix" else "cls")
+    initialize_database()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--username", "-u", help="Username or profile link to scrape")
     parser.add_argument(
@@ -236,16 +234,11 @@ if __name__ == "__main__":
         else:
             usernames = args.batch.split(",")
 
-        for user_id in usernames:
-            os.system("clear" if os.name == "posix" else "cls")
-            initialize_database()
-            asyncio.run(main(user_id))
+        for username in usernames:
+            asyncio.run(main(username))
     else:
-        user_id = args.username or input(
+        username = args.username or input(
             "Enter the username or profile link to scrape: "
         )
 
-        os.system("clear" if os.name == "posix" else "cls")
-        initialize_database()
-
-        asyncio.run(main(user_id))
+        asyncio.run(main(username))
