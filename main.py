@@ -13,8 +13,8 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 CONFIG = {
     "max_concurrent_downloads": 5,
-    "root_path": "A:/Venus/tools/CyberDropDownloader/Downloads",
-    "database_path": "A:/Venus/tools/CyberDropDownloader/redgif_history.sqlite",
+    "root_path": "",
+    "database_path": "redgif_history.sqlite",
 }
 
 history_to_insert = []
