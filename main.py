@@ -238,6 +238,7 @@ if __name__ == "__main__":
             usernames = args.batch.split(",")
 
         for username in usernames:
+            username = username.replace("https://www.redgifs.com/users/", "")
             asyncio.run(main(username))
 
     else:
@@ -245,4 +246,5 @@ if __name__ == "__main__":
             "Enter the username or profile link to scrape: "
         )
 
+        username = username.replace("https://www.redgifs.com/users/", "")
         asyncio.run(main(username))
