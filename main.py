@@ -9,10 +9,10 @@ from pathlib import Path
 # Some logic/code was taken from this project: https://github.com/Jules-WinnfieldX/CyberDropDownloader/
 # Specifically this spider: https://github.com/Jules-WinnfieldX/CyberDropDownloader/blob/master/cyberdrop_dl/crawlers/RedGifs_Spider.py
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(Path(__file__).resolve().parent)
 
 CONFIG = {
-    "max_concurrent_downloads": 5,
+    "max_concurrent_downloads": 3,
     "root_path": "",
     "database_path": "redgif_history.sqlite",
 }
@@ -228,14 +228,18 @@ if __name__ == "__main__":
 
     if args.batch:
         usernames = []
-        if os.path.isfile(args.batch):
+
+        if Path(args.batch).is_file():
             with open(args.batch, "r") as batch_file:
-                usernames = batch_file.read().splitlines()
+                for line in batch_file:
+                    if not line.startswith("#"):
+                        usernames.append(line.strip())
         else:
             usernames = args.batch.split(",")
 
         for username in usernames:
             asyncio.run(main(username))
+
     else:
         username = args.username or input(
             "Enter the username or profile link to scrape: "
