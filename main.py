@@ -12,7 +12,7 @@ from pathlib import Path
 os.chdir(Path(__file__).resolve().parent)
 
 CONFIG = {
-    "max_concurrent_downloads": 3,
+    "max_concurrent_downloads": 1,
     "root_path": "",
     "database_path": "redgif_history.sqlite",
 }
